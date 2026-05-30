@@ -1,0 +1,29 @@
+---
+- name: Prepare
+  hosts: all
+  become: true
+  tasks:
+    - name: Install borgbackup so we can init a local test repo
+      ansible.builtin.apt:
+        name: borgbackup
+        state: present
+        update_cache: true
+
+    - name: Create a source directory to back up
+      ansible.builtin.file:
+        path: /tmp/src
+        state: directory
+        mode: "0755"
+
+    - name: Seed a file in the source directory
+      ansible.builtin.copy:
+        content: "molecule test payload\n"
+        dest: /tmp/src/hello.txt
+        mode: "0644"
+
+    # Unencrypted so the smoke test needs no real keyfile/passphrase; borg
+    # ignores BORG_KEY_FILE / BORG_PASSCOMMAND on a `none`-encryption repo.
+    - name: Initialise a local unencrypted borg repo for the smoke test
+      ansible.builtin.command:
+        cmd: borg init --encryption=none /tmp/local-repo
+        creates: /tmp/local-repo/config

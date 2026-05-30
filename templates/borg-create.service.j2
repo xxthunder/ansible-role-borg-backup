@@ -1,0 +1,30 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Daily borg archive to the offsite repository
+Documentation=https://borgbackup.readthedocs.io/
+After=network-online.target
+Wants=network-online.target
+{% if borg_backup_healthchecks_enabled | bool %}
+OnFailure=borg-failure@%n.service
+{% endif %}
+
+[Service]
+Type=oneshot
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+ExecStart={{ borg_backup_create_script }}
+
+# Hardening — borg needs network access, read access to /source/* and
+# /etc/borg/*, and write access only to its own cache. Lock down the rest.
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+NoNewPrivileges=true
+{% for src in borg_backup_sources %}
+ReadOnlyPaths="{{ src }}"
+{% endfor %}
+ReadWritePaths="{{ borg_backup_user_home }}/.cache/borg" "{{ borg_backup_security_dir }}"
+
+[Install]
+WantedBy=multi-user.target

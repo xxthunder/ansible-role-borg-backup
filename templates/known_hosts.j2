@@ -1,0 +1,4 @@
+{# Pinned SSH host keys for the remote borg repo. Supplied via borg_backup_remote_known_hosts. #}
+{% for entry in borg_backup_remote_known_hosts %}
+{{ entry }}
+{% endfor %}

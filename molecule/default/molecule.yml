@@ -1,0 +1,44 @@
+---
+# Default scenario: converge the role in systemd-enabled Debian containers
+# against a LOCAL on-disk borg repo. No SSH, no network repo, no real secrets —
+# CI never contacts a remote Storage Box. See prepare.yml / converge.yml.
+#
+# Two instances cover both Healthchecks states in one run:
+#   - instance-hc   — a UUID is supplied (via host_vars) → pinging enabled.
+#   - instance-nohc — no UUID → pinging disabled; exercises the OnFailure-off
+#                     template branch and the "remove when disabled" cleanup tasks.
+#
+# The base image is intentionally tracked at `latest` (geerlingguy publishes it
+# `latest`-only by design). For a reusable role the test matrix should follow
+# the current Debian + Ansible so CI surfaces ecosystem drift early — that's
+# signal, not noise. (Unlike the consuming side, which pins for reproducibility.)
+dependency:
+  name: galaxy
+driver:
+  name: docker
+platforms:
+  - name: instance-hc
+    image: &image geerlingguy/docker-debian12-ansible:latest
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+  - name: instance-nohc
+    image: *image
+    command: /lib/systemd/systemd
+    privileged: true
+    cgroupns_mode: host
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
+    pre_build_image: true
+provisioner:
+  name: ansible
+  inventory:
+    host_vars:
+      # Only instance-hc gets a UUID, so instance-nohc takes the disabled path.
+      instance-hc:
+        borg_backup_healthchecks_uuid: "00000000-0000-0000-0000-000000000000"
+verifier:
+  name: ansible

@@ -1,0 +1,222 @@
+---
+# Role argument spec for borg-backup. Ansible inserts a validate_argument_spec
+# task at the start of the role, so a missing or mistyped variable fails fast
+# with a clear message naming the var — instead of a generic "undefined
+# variable" deep inside a task. This is the role's complete, authoritative
+# variable surface.
+#
+# Division of labour:
+#   - Operational vars (required: true here) have NO default — they are
+#     deployment-specific (repo, secrets, host keys, schedule, retention) and
+#     belong in the consumer's group_vars + vault. A wrong fallback on a
+#     backup role is dangerous, so they fail loud when unset.
+#   - Path/structural vars (required: false) carry their defaults in
+#     defaults/main.yml, which stays the single source of truth — we document
+#     type and purpose here but deliberately do NOT restate the default value,
+#     to avoid drift between the two files.
+#
+# NOTE: required: true checks *defined*, not *non-empty*. The "Assert
+# prerequisites are present" task in tasks/main.yml still guards the secrets and
+# known_hosts against empty values; the two checks are complementary.
+#
+# Requires ansible-core >= 2.11.
+
+argument_specs:
+  main:
+    short_description: Daily encrypted offsite borg backup over SSH.
+    description:
+      - Installs borgbackup, deploys SSH key / keyfile / passphrase, templates
+        the create + prune wrappers, and installs a systemd timer + OnFailure
+        Healthchecks ping. See README.md for the full picture.
+    options:
+
+      # --- Required operational config (set in the consumer's group_vars) -----
+
+      borg_backup_repo:
+        type: str
+        required: true
+        description:
+          - Borg repository URL, e.g. "ssh://user@host:port/./repo". No default
+            by design — there is no safe generic fallback for a backup target.
+
+      borg_backup_sources:
+        type: list
+        elements: str
+        required: true
+        description:
+          - Absolute paths on the managed host to back up (e.g. /srv/data).
+
+      borg_backup_package_version:
+        type: str
+        required: true
+        description:
+          - Pinned apt version of the borgbackup Debian package (e.g.
+            "1.2.4-1"). Bump deliberately.
+
+      borg_backup_upload_ratelimit_mbit:
+        type: int
+        required: true
+        description:
+          - Upload cap in Mbit/s; converted to borg's --upload-ratelimit
+            (KiB/s) in the create wrapper.
+
+      borg_backup_create_oncalendar:
+        type: str
+        required: true
+        description:
+          - systemd OnCalendar expression for the daily archive run (e.g.
+            "*-*-* 03:30:00"). Interpreted in borg_backup_create_timezone.
+
+      borg_backup_create_timezone:
+        type: str
+        required: true
+        description:
+          - IANA timezone appended to OnCalendar as a trailing token (systemd
+            >= 240). Conventionally "Europe/Berlin" (set in group_vars). No
+            role default — the timer template references it directly, so leaving
+            it unset is a templating error.
+
+      borg_backup_healthchecks_base_url:
+        type: str
+        required: false
+        description:
+          - Base URL for Healthchecks pings, e.g. "https://hc-ping.com". The
+            UUID is appended at runtime from borg_backup_healthchecks_uuid.
+            Optional — defaults to https://hc-ping.com (defaults/main.yml); only
+            used when borg_backup_healthchecks_uuid is set.
+
+      borg_backup_prune_keep_daily:
+        type: int
+        required: true
+        description:
+          - Retention for the manual borg prune wrapper. --keep-daily.
+
+      borg_backup_prune_keep_weekly:
+        type: int
+        required: true
+        description:
+          - Retention for the manual borg prune wrapper. --keep-weekly.
+
+      borg_backup_prune_keep_monthly:
+        type: int
+        required: true
+        description:
+          - Retention for the manual borg prune wrapper. --keep-monthly.
+
+      borg_backup_prune_keep_yearly:
+        type: int
+        required: true
+        description:
+          - Retention for the manual borg prune wrapper. --keep-yearly.
+
+      borg_backup_remote_known_hosts:
+        type: list
+        elements: str
+        required: true
+        description:
+          - Pinned SSH host-key lines for the remote repo. The role refuses to
+            deploy when empty so a fresh repo never auto-trusts an unverified
+            host; generate with scripts/fetch_remote_host_keys.sh.
+
+      # --- Required secrets (supply via the consumer's vault layer) -----------
+
+      borg_backup_passphrase:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - Borg repo passphrase.
+
+      borg_backup_keyfile:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - Exported borg keyfile contents (borg key export).
+
+      borg_backup_ssh_private_key:
+        type: str
+        required: true
+        no_log: true
+        description:
+          - SSH private key used to reach the remote repo host.
+
+      borg_backup_healthchecks_uuid:
+        type: str
+        required: false
+        no_log: true
+        description:
+          - Healthchecks.io check UUID. Optional — when set, the role deploys
+            the UUID, sends a success ping at the end of each run, and wires the
+            unit's OnFailure to a fail ping. When unset, all Healthchecks
+            integration is skipped.
+
+      # --- Structural defaults (defaults/main.yml owns the values) -----------
+      # Listed for completeness and type-checking; the authoritative default
+      # values live in defaults/main.yml. required defaults to false.
+
+      borg_backup_user:
+        type: str
+        description: Local user that owns the borg files and runs the units.
+
+      borg_backup_user_home:
+        type: str
+        description: Home directory of borg_backup_user; base for the path defaults below.
+
+      borg_backup_ssh_dir:
+        type: str
+        description: SSH directory holding the private key and known_hosts.
+
+      borg_backup_ssh_port:
+        type: int
+        description:
+          - SSH port for the remote repo. Defaults to 22; override when the
+            provider exposes borg/SFTP on a non-standard port.
+
+      borg_backup_ssh_private_key_path:
+        type: str
+        description: On-disk path the SSH private key is written to.
+
+      borg_backup_known_hosts_path:
+        type: str
+        description: On-disk path the pinned known_hosts is written to.
+
+      borg_backup_keyfile_dir:
+        type: str
+        description: Directory for the repo-agnostic keyfile.
+
+      borg_backup_keyfile_path:
+        type: str
+        description: Stable path pointed to by BORG_KEY_FILE.
+
+      borg_backup_security_dir:
+        type: str
+        description:
+          - Borg per-repo security/manifest-timestamp dir; must be writable
+            from inside the hardened systemd unit (ReadWritePaths).
+
+      borg_backup_create_script:
+        type: str
+        description: Path of the templated borg-create wrapper.
+
+      borg_backup_prune_script:
+        type: str
+        description: Path of the templated borg-prune wrapper.
+
+      borg_backup_secrets_dir:
+        type: str
+        description:
+          - Directory holding the 0400 root-only passphrase and Healthchecks
+            UUID files.
+
+      borg_backup_create_service:
+        type: str
+        description: Name of the systemd oneshot service unit.
+
+      borg_backup_create_timer:
+        type: str
+        description: Name of the systemd timer unit.
+
+      borg_backup_failure_service:
+        type: str
+        description: Name of the templated OnFailure ping unit.

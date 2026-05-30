@@ -1,0 +1,60 @@
+---
+- name: Verify
+  hosts: all
+  become: true
+  tasks:
+    - name: Stat the create wrapper
+      ansible.builtin.stat:
+        path: /usr/local/sbin/borg-create
+      register: create_wrapper
+
+    - name: Stat the prune wrapper
+      ansible.builtin.stat:
+        path: /usr/local/sbin/borg-prune
+      register: prune_wrapper
+
+    - name: Query the timer unit
+      ansible.builtin.systemd:
+        name: borg-create.timer
+      register: timer
+
+    - name: Stat the Healthchecks UUID file
+      ansible.builtin.stat:
+        path: /etc/borg/healthchecks_uuid
+      register: hc_uuid_file
+
+    - name: Stat the OnFailure ping unit
+      ansible.builtin.stat:
+        path: /etc/systemd/system/borg-failure@.service
+      register: failure_unit
+
+    - name: Read the rendered create service unit
+      ansible.builtin.slurp:
+        src: /etc/systemd/system/borg-create.service
+      register: create_service
+
+    - name: Assert the common role state on every host
+      ansible.builtin.assert:
+        that:
+          - create_wrapper.stat.exists
+          - prune_wrapper.stat.exists
+          - timer.status.UnitFileState == "enabled"
+          - timer.status.ActiveState in ["active", "waiting"]
+
+    - name: Assert Healthchecks wiring is present when a UUID was supplied
+      ansible.builtin.assert:
+        that:
+          - hc_uuid_file.stat.exists
+          - failure_unit.stat.exists
+          - "'OnFailure=' in (create_service.content | b64decode)"
+        fail_msg: Healthchecks UUID is set but the ping wiring was not deployed.
+      when: inventory_hostname == "instance-hc"
+
+    - name: Assert Healthchecks wiring is absent when no UUID was supplied
+      ansible.builtin.assert:
+        that:
+          - not hc_uuid_file.stat.exists
+          - not failure_unit.stat.exists
+          - "'OnFailure=' not in (create_service.content | b64decode)"
+        fail_msg: No Healthchecks UUID was set but ping wiring was left behind.
+      when: inventory_hostname == "instance-nohc"

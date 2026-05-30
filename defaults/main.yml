@@ -1,0 +1,49 @@
+---
+# Defaults for the borg-backup role. All operationally meaningful values are
+# set in group_vars/group_borg/vars.yml; this file holds path defaults that
+# rarely move.
+
+borg_backup_user: root
+borg_backup_user_home: /root
+borg_backup_ssh_dir: "{{ borg_backup_user_home }}/.ssh"
+borg_backup_ssh_private_key_path: "{{ borg_backup_ssh_dir }}/borg_ed25519"
+borg_backup_known_hosts_path: "{{ borg_backup_ssh_dir }}/known_hosts"
+
+# SSH port for the remote borg repo. Defaults to the standard SSH port; some
+# providers expose borg/SFTP on a non-standard port (e.g. 23) — override from
+# the consumer's group_vars when the repo URL uses one. The create/prune
+# wrappers pass this to ssh via BORG_RSH.
+borg_backup_ssh_port: 22
+
+# Where borg looks for the keyfile on the client. Borg's native keyfile name is
+# the repository ID hex, unknown upfront; the role instead places the file under
+# a stable, repo-agnostic name and points BORG_KEY_FILE at it explicitly. Keep
+# this default free of any repo- or playbook-specific name — the role is reusable.
+borg_backup_keyfile_dir: "{{ borg_backup_user_home }}/.config/borg/keys"
+borg_backup_keyfile_path: "{{ borg_backup_keyfile_dir }}/repo.key"
+
+# Borg writes a per-repo "manifest timestamp" / repo-id record here on every
+# run to detect repo replacement attacks. Must be writable from inside the
+# hardened systemd unit (see ReadWritePaths in borg-create.service.j2).
+borg_backup_security_dir: "{{ borg_backup_user_home }}/.config/borg/security"
+
+# Wrapper script paths. /usr/local/sbin keeps them off the default user PATH.
+borg_backup_create_script: /usr/local/sbin/borg-create
+borg_backup_prune_script: /usr/local/sbin/borg-prune
+
+# Secrets directory — passphrase and Healthchecks UUID land here as 0400
+# root-only files. Sourced via BORG_PASSCOMMAND and a runtime cat in the
+# wrappers so the values never appear in /proc/<pid>/environ.
+borg_backup_secrets_dir: /etc/borg
+
+# Healthchecks.io dead-man's-switch base URL. Optional feature: pinging is
+# enabled automatically when borg_backup_healthchecks_uuid is set (in the
+# consumer's group_vars/vault). When the UUID is unset, the UUID file, the
+# success ping, and the OnFailure ping unit are all skipped. Only the UUID is
+# required to enable it — this base URL has a sensible default.
+borg_backup_healthchecks_base_url: "https://hc-ping.com"
+
+# systemd unit names.
+borg_backup_create_service: borg-create.service
+borg_backup_create_timer: borg-create.timer
+borg_backup_failure_service: borg-failure@.service

@@ -1,0 +1,13 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Daily borg archive timer
+Documentation=https://borgbackup.readthedocs.io/
+
+[Timer]
+OnCalendar={{ borg_backup_create_oncalendar }} {{ borg_backup_create_timezone }}
+RandomizedDelaySec=5min
+Persistent=true
+Unit={{ borg_backup_create_service }}
+
+[Install]
+WantedBy=timers.target

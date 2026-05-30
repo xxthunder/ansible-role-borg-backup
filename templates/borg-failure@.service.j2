@@ -1,0 +1,12 @@
+# {{ ansible_managed }}
+#
+# Templated OnFailure= target. The instance name (%i) is the failing unit
+# name (e.g. borg-create.service); we don't use it in the body but it ends
+# up in the journal for context.
+
+[Unit]
+Description=Healthchecks fail ping for %i
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash -c '/usr/bin/curl --silent --show-error --max-time 10 --retry 3 "{{ borg_backup_healthchecks_base_url }}/$(cat {{ borg_backup_secrets_dir }}/healthchecks_uuid)/fail" >/dev/null'

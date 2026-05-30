@@ -1,0 +1,29 @@
+---
+galaxy_info:
+  role_name: borg_backup
+  namespace: xxthunder
+  author: xxthunder
+  description: >-
+    Daily encrypted offsite borg backup over SSH — pinned package, hardened
+    systemd timer, manual-only prune, and Healthchecks.io dead-man's-switch
+    pings.
+  company: xxthunder
+  license: MIT
+  # argument_specs.yml requires the role-arg validation introduced in 2.11.
+  min_ansible_version: "2.11"
+
+  platforms:
+    - name: Debian
+      versions:
+        - bullseye
+        - bookworm
+
+  galaxy_tags:
+    - backup
+    - borg
+    - borgbackup
+    - offsite
+    - systemd
+    - encryption
+
+dependencies: []

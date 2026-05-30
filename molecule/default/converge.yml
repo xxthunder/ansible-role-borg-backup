@@ -1,0 +1,49 @@
+---
+- name: Converge
+  hosts: all
+  become: true
+  vars:
+    # Point the role at the local on-disk repo created in prepare.yml.
+    borg_backup_repo: /tmp/local-repo
+    borg_backup_sources:
+      - /tmp/src
+    # borg_backup_package_version is discovered at runtime (pre_tasks below)
+    # rather than hardcoded: the base image tracks :latest, so a fixed version
+    # would break CI the day bookworm advances borgbackup. Following the image's
+    # apt candidate keeps test-fixture drift from masquerading as role failure.
+    borg_backup_upload_ratelimit_mbit: 10
+    borg_backup_create_oncalendar: "*-*-* 03:30:00"
+    borg_backup_create_timezone: "UTC"
+    borg_backup_prune_keep_daily: 7
+    borg_backup_prune_keep_weekly: 4
+    borg_backup_prune_keep_monthly: 6
+    borg_backup_prune_keep_yearly: 2
+    # Dummy values — sufficient to satisfy the role's asserts; never used to
+    # reach a real host because borg_backup_repo is a local path on an unencrypted repo.
+    borg_backup_remote_known_hosts:
+      - "[localhost]:22 ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculePlaceholderKeyDoNotUseInProduction"
+    borg_backup_passphrase: "molecule-not-a-real-passphrase"
+    borg_backup_keyfile: "molecule-placeholder-keyfile"
+    borg_backup_ssh_private_key: "molecule-placeholder-ssh-key"
+    # borg_backup_healthchecks_uuid is supplied only to instance-hc via the
+    # scenario's host_vars (molecule.yml); instance-nohc leaves it unset so the
+    # Healthchecks-disabled path is exercised. borg_backup_healthchecks_base_url
+    # is intentionally omitted to let the role default apply.
+  pre_tasks:
+    - name: Discover the borgbackup version available in the image
+      ansible.builtin.shell:
+        cmd: set -o pipefail; apt-cache policy borgbackup | awk '/Candidate:/ {print $2}'
+        executable: /bin/bash
+      register: borg_candidate
+      changed_when: false
+
+    - name: Pin the role to the discovered borgbackup version
+      ansible.builtin.set_fact:
+        borg_backup_package_version: "{{ borg_candidate.stdout | trim }}"
+
+    - name: Fail early if borgbackup has no installable candidate
+      ansible.builtin.assert:
+        that: borg_backup_package_version | length > 0
+        fail_msg: borgbackup has no installable candidate in the image's apt index.
+  roles:
+    - role: borg-backup

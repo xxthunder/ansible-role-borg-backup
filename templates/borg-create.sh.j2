@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+# {{ ansible_managed }}
+#
+# Daily borg create, ratelimited. Healthchecks success ping at the end;
+# failures are picked up by systemd OnFailure= -> borg-failure@.service.
+
+set -euo pipefail
+
+# Mbit/s -> KiB/s. borg's --upload-ratelimit is KiB/s; the group_var is in
+# Mbit/s because the byte-per-second form is a documented foot-gun.
+ratelimit_kibps=$(( {{ borg_backup_upload_ratelimit_mbit }} * 1000000 / 8 / 1024 ))
+
+export BORG_REPO="{{ borg_backup_repo }}"
+export BORG_PASSCOMMAND="cat {{ borg_backup_secrets_dir }}/passphrase"
+export BORG_KEY_FILE="{{ borg_backup_keyfile_path }}"
+export BORG_RSH="ssh -p {{ borg_backup_ssh_port }} -i {{ borg_backup_ssh_private_key_path }} -o UserKnownHostsFile={{ borg_backup_known_hosts_path }} -o StrictHostKeyChecking=yes -o BatchMode=yes -o PasswordAuthentication=no -o ServerAliveInterval=60 -o ServerAliveCountMax=10"
+
+archive_name="$(hostname -s)-$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+
+borg create \
+  --stats \
+  --compression zstd,3 \
+  --upload-ratelimit "${ratelimit_kibps}" \
+  "::${archive_name}" \
+{% for src in borg_backup_sources %}
+  "{{ src }}"{{ "" if loop.last else " \\" }}
+{% endfor %}
+
+{% if borg_backup_healthchecks_enabled | bool %}
+# Success ping. Tolerate transient network errors here — Healthchecks raises
+# its own alert on a missed deadline, so silence beats a spurious failure.
+hc_uuid="$(cat {{ borg_backup_secrets_dir }}/healthchecks_uuid)"
+curl --silent --show-error --max-time 10 --retry 3 \
+  "{{ borg_backup_healthchecks_base_url }}/${hc_uuid}" >/dev/null || true
+{% endif %}

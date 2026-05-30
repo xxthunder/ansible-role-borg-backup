@@ -1,0 +1,19 @@
+---
+# yamllint config for the standalone borg-backup role.
+# Mirrors the parent monorepo's relaxed style; line-length is disabled because
+# some shell-export lines in tasks (BORG_RSH ssh option strings) are
+# unavoidably long and don't benefit from wrapping.
+extends: default
+
+rules:
+  braces:
+    max-spaces-inside: 1
+  comments:
+    min-spaces-from-content: 1
+  comments-indentation: disable
+  document-start: disable
+  line-length: disable
+  octal-values:
+    forbid-implicit-octal: true
+    forbid-explicit-octal: true
+  truthy: disable

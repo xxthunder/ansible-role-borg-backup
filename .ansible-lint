@@ -1,0 +1,8 @@
+---
+# ansible-lint config for the standalone borg-backup role.
+# Skips that can't be resolved without changing the role's naming convention
+# or that are intentionally deferred (same policy as the parent monorepo).
+
+skip_list:
+  - role-name   # borg-backup uses a hyphen; Galaxy convention allows it
+  - schema      # schema warnings on older-style task definitions
